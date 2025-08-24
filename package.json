@@ -10,7 +10,7 @@
     "package-win": "echo Packaging guide in README.md"
   },
   "dependencies": {
-    "@google/genai": "^0.3.0",
+    "@google/genai": "^1.15.0",
     "chokidar": "^3.6.0",
     "csv-parse": "^5.5.6",
     "sanitize-filename": "^1.6.3"

@@ -1,4 +1,9 @@
 
+if (!window.api) {
+  alert('Preload gagal di-load. Pastikan contextIsolation aktif dan preload.js dieksekusi (lihat console).');
+}
+
+
 const $ = (sel) => document.querySelector(sel);
 const tbody = $('#tbl tbody');
 let settings = await window.api.getSettings();
@@ -138,4 +143,61 @@ window.api.onQueueUpdate(async (q) => {
 });
 window.api.onPausedByCap((p) => {
   alert(`Paused by cost cap: ${p.cap} jobs this session.`);
+});
+
+
+// ------- Settings Modal -------
+const modal = document.getElementById('settingsModal');
+const inpKey = document.getElementById('sett_apiKey');
+const inpConc = document.getElementById('sett_conc');
+const outDirLbl = document.getElementById('sett_outDir');
+const btnChooseOut = document.getElementById('sett_chooseOut');
+const btnSave = document.getElementById('sett_save');
+const btnCancel = document.getElementById('sett_cancel');
+
+function openSettingsModal() {
+  modal.style.display = 'flex';
+}
+
+function closeSettingsModal() {
+  modal.style.display = 'none';
+}
+
+$('#btnSettings').onclick = async () => {
+  const cur = await window.api.getSettings();
+  inpKey.value = cur.apiKey || '';
+  inpConc.value = String(cur.concurrency ?? 2);
+  outDirLbl.textContent = cur.outputDir || '';
+  openSettingsModal();
+};
+
+btnChooseOut.onclick = async () => {
+  const dir = await window.api.chooseDir();
+  if (dir) {
+    outDirLbl.textContent = dir;
+  }
+};
+
+btnSave.onclick = async () => {
+  const cur = await window.api.getSettings();
+  cur.apiKey = inpKey.value.trim();
+  cur.concurrency = Math.max(0, Math.min(8, Number(inpConc.value) || 0));
+  if (outDirLbl.textContent) {
+    await window.api.setOutputDir(outDirLbl.textContent);
+    const after = await window.api.getSettings();
+    cur.outputDir = after.outputDir;
+    document.getElementById('outputDir').textContent = cur.outputDir;
+  }
+  await window.api.setSettings(cur);
+  // Also apply concurrency immediately
+  await window.api.setConcurrency(cur.concurrency);
+  closeSettingsModal();
+  alert('Settings saved.');
+};
+
+btnCancel.onclick = () => closeSettingsModal();
+
+// Close modal if clicking backdrop
+modal.addEventListener('click', (e) => {
+  if (e.target === modal) closeSettingsModal();
 });

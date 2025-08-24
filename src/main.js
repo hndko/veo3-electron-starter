@@ -22,23 +22,20 @@ const state = {
     outputDir: path.join(os.homedir(), 'Videos', 'Veo3'),
     watchDir: '',
     concurrency: 2,
-    personGenerationDefault: 'allow_all', // fallback; UI can change per job
-    costCapJobs: 100 // simple cap: max jobs per run
+    personGenerationDefault: 'allow_all',
+    costCapJobs: 100
   },
-  queue: [], // {id, prompt, negativePrompt, seed, personGeneration, status, progress, eta, attempts}
+  queue: [],
   running: 0,
-  totalRunCount: 0 // to enforce cost cap
+  totalRunCount: 0
 };
 
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
 const QUEUE_FILE = path.join(app.getPath('userData'), 'queue.json');
 
 function loadJSON(file, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf-8'));
-  } catch {
-    return fallback;
-  }
+  try { return JSON.parse(fs.readFileSync(file, 'utf-8')); }
+  catch { return fallback; }
 }
 
 function saveJSON(file, data) {
@@ -64,18 +61,13 @@ function createWindow() {
       contextIsolation: true
     }
   });
-
   win.loadFile(path.join(__dirname, 'renderer.html'));
-
-  win.on('closed', () => {
-    win = null;
-  });
+  win.on('closed', () => { win = null; });
 }
 
 app.whenReady().then(() => {
   Object.assign(state.settings, loadJSON(SETTINGS_FILE, state.settings));
   const restored = loadJSON(QUEUE_FILE, []);
-  // Resume: requeue unfinished jobs
   state.queue = restored.map(j => (j.status === 'done' ? j : { ...j, status: 'queued', progress: 0 }));
   ensureDirs();
   createWindow();
@@ -90,16 +82,12 @@ app.on('before-quit', () => {
   saveJSON(QUEUE_FILE, state.queue);
 });
 
-// ---------- Helpers ----------
-
 function notify(title, body) {
   new Notification({ title, body }).show();
 }
 
 function send(channel, payload) {
-  if (win && win.webContents) {
-    win.webContents.send(channel, payload);
-  }
+  if (win && win.webContents) win.webContents.send(channel, payload);
 }
 
 function slugify(s) {
@@ -107,15 +95,20 @@ function slugify(s) {
   return sanitize(clean).replace(/\s/g, '_');
 }
 
-// Fake ETA/progress since Veo ops don't expose progress
+function intToTimeStamp(ms) {
+  const d = new Date(ms);
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+}
+
+// -------- ETA/progress heuristic --------
 function tickProgress(job) {
   if (job.status !== 'running') return;
-  job.progress = Math.min(95, job.progress + Math.random() * 5);
+  job.progress = Math.min(95, (job.progress || 5) + Math.random() * 5);
   job.eta = Math.max(5, (job.eta || 60) - 5);
 }
 
-// ---------- Queue processing ----------
-
+// -------- Video job runner --------
 async function runJob(job) {
   const apiKey = state.settings.apiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Missing Gemini API key. Set it in Settings.');
@@ -126,10 +119,8 @@ async function runJob(job) {
   job.progress = 5;
   job.startedAt = Date.now();
   job.eta = 90;
-
   send('queue:update', state.queue);
 
-  // Start generation
   let operation;
   try {
     const config = {
@@ -138,17 +129,15 @@ async function runJob(job) {
       ...(job.seed ? { seed: Number(job.seed) } : {}),
       ...(job.personGeneration ? { personGeneration: job.personGeneration } : {})
     };
-
     operation = await ai.models.generateVideos({
       model: 'veo-3.0-generate-preview',
       prompt: job.prompt,
       config
     });
   } catch (e) {
-    throw new Error('Start generation failed: ' + (e.message || e.toString()));
+    throw new Error('Start generation failed: ' + (e.message || String(e)));
   }
 
-  // Poll
   try {
     while (!operation.done) {
       await new Promise(r => setTimeout(r, 10000));
@@ -157,10 +146,9 @@ async function runJob(job) {
       operation = await ai.operations.getVideosOperation({ operation });
     }
   } catch (e) {
-    throw new Error('Polling failed: ' + (e.message || e.toString()));
+    throw new Error('Polling failed: ' + (e.message || String(e)));
   }
 
-  // Download
   try {
     const video = operation.response.generatedVideos?.[0];
     if (!video) throw new Error('No video in response');
@@ -174,16 +162,11 @@ async function runJob(job) {
     job.eta = 0;
     notify('Veo 3: Selesai', `Video disimpan: ${fname}`);
   } catch (e) {
-    throw new Error('Download failed: ' + (e.message || e.toString()));
+    throw new Error('Download failed: ' + (e.message || String(e)));
   }
 }
 
-function intToTimeStamp(ms) {
-  const d = new Date(ms);
-  const pad = (n) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-}
-
+// -------- Queue pump --------
 async function pumpQueue() {
   if (processing) return;
   processing = true;
@@ -217,80 +200,8 @@ async function pumpQueue() {
   }
 }
 
-// ---------- IPC ----------
-
-ipcMain.handle('settings:get', () => state.settings);
-ipcMain.handle('settings:set', (e, s) => {
-  Object.assign(state.settings, s);
-  ensureDirs();
-  saveJSON(SETTINGS_FILE, state.settings);
-  return state.settings;
-});
-
-ipcMain.handle('queue:list', () => state.queue);
-ipcMain.handle('queue:add', (e, job) => {
-  const id = 'job_' + Math.random().toString(36).slice(2, 9);
-  state.queue.push({
-    id,
-    prompt: job.prompt,
-    negativePrompt: job.negativePrompt || '',
-    seed: job.seed || '',
-    personGeneration: job.personGeneration || state.settings.personGenerationDefault,
-    status: 'queued',
-    progress: 0,
-    eta: 0,
-    attempts: 0
-  });
-  saveJSON(QUEUE_FILE, state.queue);
-  send('queue:update', state.queue);
-  pumpQueue();
-  return id;
-});
-
-ipcMain.handle('queue:retry', (e, id) => {
-  const j = state.queue.find(x => x.id === id);
-  if (j && j.status === 'error') {
-    j.status = 'queued';
-    j.error = undefined;
-    send('queue:update', state.queue);
-    pumpQueue();
-  }
-});
-
-ipcMain.handle('queue:start', () => {
-  state.totalRunCount = 0;
-  pumpQueue();
-});
-
-ipcMain.handle('queue:pause', () => {
-  // Let currently running jobs finish. No new jobs will be started.
-  state.settings.concurrency = 0;
-  send('queue:update', state.queue);
-});
-
-ipcMain.handle('queue:setConcurrency', (e, n) => {
-  state.settings.concurrency = Math.max(0, Math.min(8, Number(n) || 0));
-  saveJSON(SETTINGS_FILE, state.settings);
-  pumpQueue();
-});
-
-ipcMain.handle('queue:clearDone', () => {
-  state.queue = state.queue.filter(j => j.status !== 'done');
-  saveJSON(QUEUE_FILE, state.queue);
-  send('queue:update', state.queue);
-});
-
-ipcMain.handle('dialog:chooseDir', async () => {
-  const res = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
-  return res.canceled ? '' : res.filePaths[0];
-});
-
-ipcMain.handle('dialog:chooseFile', async (_e, filters) => {
-  const res = await dialog.showOpenDialog({ properties: ['openFile'], filters: filters || [] });
-  return res.canceled ? '' : res.filePaths[0];
-});
-
-ipcMain.handle('import:csv', async (_e, filePath) => {
+// -------- Import helpers (used by IPC and watcher) --------
+async function importCSVPath(filePath) {
   const rows = [];
   await new Promise((resolve, reject) => {
     fs.createReadStream(filePath)
@@ -315,9 +226,9 @@ ipcMain.handle('import:csv', async (_e, filePath) => {
   send('queue:update', state.queue);
   pumpQueue();
   return rows.length;
-});
+}
 
-ipcMain.handle('import:txt', async (_e, filePath) => {
+async function importTXTPath(filePath) {
   const text = fs.readFileSync(filePath, 'utf-8');
   const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   for (const line of lines) {
@@ -332,17 +243,98 @@ ipcMain.handle('import:txt', async (_e, filePath) => {
   send('queue:update', state.queue);
   pumpQueue();
   return lines.length;
+}
+
+// -------- IPC --------
+ipcMain.handle('settings:get', () => state.settings);
+ipcMain.handle('settings:set', (_e, s) => {
+  Object.assign(state.settings, s);
+  ensureDirs();
+  saveJSON(SETTINGS_FILE, state.settings);
+  return state.settings;
 });
 
-ipcMain.handle('watch:start', (e, dirPath) => {
+ipcMain.handle('queue:list', () => state.queue);
+ipcMain.handle('queue:add', (_e, job) => {
+  const id = 'job_' + Math.random().toString(36).slice(2, 9);
+  state.queue.push({
+    id,
+    prompt: job.prompt,
+    negativePrompt: job.negativePrompt || '',
+    seed: job.seed || '',
+    personGeneration: job.personGeneration || state.settings.personGenerationDefault,
+    status: 'queued',
+    progress: 0,
+    eta: 0,
+    attempts: 0
+  });
+  saveJSON(QUEUE_FILE, state.queue);
+  send('queue:update', state.queue);
+  pumpQueue();
+  return id;
+});
+
+ipcMain.handle('queue:retry', (_e, id) => {
+  const j = state.queue.find(x => x.id === id);
+  if (j && j.status === 'error') {
+    j.status = 'queued';
+    j.error = undefined;
+    send('queue:update', state.queue);
+    pumpQueue();
+  }
+});
+
+ipcMain.handle('queue:start', () => {
+  if (state.settings.concurrency === 0) state.settings.concurrency = 2;
+  state.totalRunCount = 0;
+  pumpQueue();
+});
+
+ipcMain.handle('queue:pause', () => {
+  state.settings.concurrency = 0; // let running jobs finish
+  send('queue:update', state.queue);
+});
+
+ipcMain.handle('queue:setConcurrency', (_e, n) => {
+  state.settings.concurrency = Math.max(0, Math.min(8, Number(n) || 0));
+  saveJSON(SETTINGS_FILE, state.settings);
+  pumpQueue();
+});
+
+ipcMain.handle('queue:clearDone', () => {
+  state.queue = state.queue.filter(j => j.status !== 'done');
+  saveJSON(QUEUE_FILE, state.queue);
+  send('queue:update', state.queue);
+});
+
+ipcMain.handle('dialog:chooseDir', async () => {
+  const res = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+  return res.canceled ? '' : res.filePaths[0];
+});
+
+ipcMain.handle('dialog:chooseFile', async (_e, filters) => {
+  const res = await dialog.showOpenDialog({ properties: ['openFile'], filters: filters || [] });
+  return res.canceled ? '' : res.filePaths[0];
+});
+
+ipcMain.handle('import:csv', async (_e, filePath) => {
+  return importCSVPath(filePath);
+});
+
+ipcMain.handle('import:txt', async (_e, filePath) => {
+  return importTXTPath(filePath);
+});
+
+ipcMain.handle('watch:start', (_e, dirPath) => {
   if (watcher) watcher.close();
   if (!dirPath) return false;
   watcher = chokidar.watch([path.join(dirPath, '*.txt'), path.join(dirPath, '*.csv')], { ignoreInitial: false });
-  watcher.on('add', (p) => {
-    if (p.endsWith('.txt')) {
-      ipcMain.emit('import:txt', null, p);
-    } else if (p.endsWith('.csv')) {
-      ipcMain.emit('import:csv', null, p);
+  watcher.on('add', async (p) => {
+    try {
+      if (p.endsWith('.txt')) await importTXTPath(p);
+      else if (p.endsWith('.csv')) await importCSVPath(p);
+    } catch (e) {
+      console.error('watch import failed', e);
     }
   });
   state.settings.watchDir = dirPath;
@@ -350,7 +342,7 @@ ipcMain.handle('watch:start', (e, dirPath) => {
   return true;
 });
 
-ipcMain.handle('output:set', (e, dir) => {
+ipcMain.handle('output:set', (_e, dir) => {
   if (dir) {
     state.settings.outputDir = dir;
     ensureDirs();
