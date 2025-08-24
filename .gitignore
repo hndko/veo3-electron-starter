@@ -1,0 +1,53 @@
+# Node dependencies
+/node_modules
+/package-lock.json
+/yarn.lock
+/pnpm-lock.yaml
+
+# Build artifacts
+/dist
+/out
+/build
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editor configs
+.vscode/
+.idea/
+*.swp
+
+# Electron specific
+*.asar
+*.bak
+
+# User data (settings, queue, cache)
+*.db
+*.sqlite
+*.local.json
+*.cache
+*.log
+*.bak
+*.tmp
+
+# Generated userData for Electron
+**/settings.json
+**/queue.json
+
+# Output videos
+/Videos
+/output
+*.mp4
+*.webm
+
+# Env & API Keys
+.env
+.env.*

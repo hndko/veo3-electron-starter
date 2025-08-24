@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Veo 3 Generator (Electron)</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; }
+      header { padding: 10px 16px; background: #222; color: #fff; display:flex; gap: 12px; align-items: center; }
+      header input, header select, header button { padding: 6px 8px; }
+      .container { padding: 16px; }
+      .row { display: flex; gap: 16px; margin-bottom:12px; flex-wrap: wrap; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+      .grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr; gap: 8px; align-items: center; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+      .progress { height: 8px; background: #eee; border-radius: 999px; overflow: hidden; }
+      .bar { height: 100%; background: #0b84ff; width: 0%; transition: width 0.3s; }
+      .status { font-weight: 600; }
+      small.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+      footer { padding: 10px 16px; border-top: 1px solid #eee; color: #666; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <button id="btnStart">Start</button>
+      <button id="btnPause">Pause</button>
+      <label>Concurrency <input type="number" id="concurrency" min="0" max="8" value="2" style="width:60px"></label>
+      <button id="btnClearDone">Clear Done</button>
+      <span>&nbsp;|&nbsp;</span>
+      <button id="btnImportCSV">Import CSV</button>
+      <button id="btnImportTXT">Import TXT</button>
+      <button id="btnWatchFolder">Watch Folder</button>
+      <button id="btnOutputFolder">Output Folder</button>
+      <span id="outputDir" style="opacity:0.8"></span>
+      <span style="flex:1"></span>
+      <button id="btnSettings">Settings</button>
+    </header>
+
+    <div class="container">
+      <div class="row card">
+        <div style="flex:2">
+          <label>Prompt</label><br>
+          <textarea id="prompt" rows="3" style="width:100%"></textarea>
+        </div>
+        <div style="flex:1">
+          <label>Negative Prompt</label><br>
+          <input id="negPrompt" style="width:100%">
+          <div style="height:8px"></div>
+          <label>Seed</label><br>
+          <input id="seed" type="number" min="0" max="4294967295" style="width:100%">
+          <div style="height:8px"></div>
+          <label>Person Generation</label><br>
+          <select id="person">
+            <option value="">(default)</option>
+            <option value="allow_all">allow_all (text2video)</option>
+            <option value="allow_adult">allow_adult</option>
+            <option value="dont_allow">dont_allow</option>
+          </select>
+          <div style="height:8px"></div>
+          <button id="btnAdd">Add Job</button>
+        </div>
+      </div>
+
+      <h3>Queue</h3>
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th style="width:26px">#</th>
+            <th>Prompt</th>
+            <th>Status</th>
+            <th>Progress</th>
+            <th>ETA</th>
+            <th>Output</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <footer>
+      <small class="mono" id="status"></small>
+    </footer>
+
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>

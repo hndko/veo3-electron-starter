@@ -1,0 +1,21 @@
+{
+  "name": "veo3-electron-starter",
+  "version": "0.1.0",
+  "description": "Electron desktop app to auto-generate videos using Veo 3 (Gemini API). Queue, concurrency, CSV/TXT import, watch folder, resume, ETA, notifications.",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "build": "echo \"No build step needed\"",
+    "package-win": "echo Packaging guide in README.md"
+  },
+  "dependencies": {
+    "@google/genai": "^0.3.0",
+    "chokidar": "^3.6.0",
+    "csv-parse": "^5.5.6",
+    "sanitize-filename": "^1.6.3"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}
