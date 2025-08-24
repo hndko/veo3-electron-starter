@@ -16,6 +16,9 @@ let win;
 let watcher = null;
 let processing = false;
 
+let quotaInterval = null;
+let quotaTimeout = null;
+
 const state = {
   settings: {
     apiKey: '',
@@ -27,7 +30,15 @@ const state = {
   },
   queue: [],
   running: 0,
-  totalRunCount: 0
+  totalRunCount: 0,
+  quotaCooldown: {
+    active: false,
+    nextRetryAt: 0,
+    prevConcurrency: 2,
+    backoffMs: 5 * 60 * 1000,
+    maxBackoffMs: 60 * 60 * 1000
+  },
+  cooldownUntil: 0
 };
 
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
@@ -71,6 +82,10 @@ app.whenReady().then(() => {
   state.queue = restored.map(j => (j.status === 'done' ? j : { ...j, status: 'queued', progress: 0 }));
   ensureDirs();
   createWindow();
+  // Re-arm cooldown timers if needed
+  if (state.quotaCooldown.active && state.quotaCooldown.nextRetryAt > Date.now()) {
+    startQuotaCooldown('Resuming previous cooldown');
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -170,6 +185,63 @@ async function runJob(job) {
 function isQuotaError(err) {
   const s = String(err || '');
   return s.includes('"code":429') || s.includes('RESOURCE_EXHAUSTED') || s.includes('rate limit') || s.includes('429');
+}
+
+
+function scheduleQuotaRetry() {
+  // simple exponential backoff (start 5 min, double up to 60 min)
+  const now = Date.now();
+  const last = state.cooldownUntil > now ? state.cooldownUntil - now : 0;
+  let nextDelay = 5 * 60 * 1000; // 5 min
+  if (last > 0) {
+    // double previous if still cooling down, capped at 60 min
+    nextDelay = Math.min(last * 2, 60 * 60 * 1000);
+  }
+  state.cooldownUntil = now + nextDelay;
+  saveJSON(SETTINGS_FILE, state.settings);
+  send('queue:cooldown', { until: state.cooldownUntil });
+  // schedule automatic resume attempt
+  setTimeout(() => {
+    if (Date.now() >= state.cooldownUntil) {
+      state.settings.concurrency = Math.max(1, state.settings.concurrency || 1);
+      send('queue:cooldownEnd', { resumed: true });
+      pumpQueue();
+    }
+  }, nextDelay + 2000);
+}
+
+
+function startQuotaCooldown(reason = 'Quota exceeded (429)') {
+  const now = Date.now();
+  if (!state.quotaCooldown.active) {
+    state.quotaCooldown.active = true;
+    state.quotaCooldown.prevConcurrency = state.settings.concurrency;
+  }
+  state.settings.concurrency = 0;
+  state.quotaCooldown.nextRetryAt = now + state.quotaCooldown.backoffMs;
+  saveJSON(SETTINGS_FILE, state.settings);
+  send('queue:pausedByQuota', { reason });
+  // clear old timers
+  if (quotaInterval) clearInterval(quotaInterval);
+  if (quotaTimeout) clearTimeout(quotaTimeout);
+  // tick every second
+  quotaInterval = setInterval(() => {
+    const remainingMs = Math.max(0, state.quotaCooldown.nextRetryAt - Date.now());
+    send('quota:cooldownTick', { remainingSec: Math.ceil(remainingMs / 1000) });
+    if (remainingMs <= 0) clearInterval(quotaInterval);
+  }, 1000);
+  // schedule resume
+  quotaTimeout = setTimeout(endQuotaCooldown, state.quotaCooldown.nextRetryAt - now);
+}
+
+function endQuotaCooldown() {
+  state.quotaCooldown.active = false;
+  state.settings.concurrency = state.quotaCooldown.prevConcurrency || 2;
+  // exponential backoff for next time (up to max)
+  state.quotaCooldown.backoffMs = Math.min(state.quotaCooldown.backoffMs * 2, state.quotaCooldown.maxBackoffMs);
+  saveJSON(SETTINGS_FILE, state.settings);
+  send('quota:cooldownEnd', {});
+  pumpQueue();
 }
 
 // -------- Queue pump --------

@@ -207,3 +207,44 @@ modal.addEventListener('click', (e) => {
 window.api.onPausedByQuota((p) => {
   alert((p && p.reason) ? p.reason : 'Quota exceeded (429). Check billing/limits.');
 });
+
+
+// Cooldown notifications
+let cooldownTimer = null;
+window.api.onCooldown((p) => {
+  if (!p || !p.until) return;
+  const until = p.until;
+  clearInterval(cooldownTimer);
+  cooldownTimer = setInterval(() => {
+    const left = Math.max(0, until - Date.now());
+    const sec = Math.floor(left/1000)%60;
+    const min = Math.floor(left/60000);
+    document.getElementById('status').textContent = `⏳ Quota cooldown: retry in ${min}m ${sec}s`;
+    if (left<=0) {
+      clearInterval(cooldownTimer);
+    }
+  }, 1000);
+  alert('Quota exceeded. Auto-retry scheduled.');
+});
+
+window.api.onCooldownEnd((p) => {
+  alert('Cooldown ended. Queue resumed.');
+});
+
+
+const cooldownLabel = document.getElementById('cooldown');
+window.api.onPausedByQuota((p) => {
+  alert((p && p.reason) ? p.reason : 'Quota exceeded (429). Check billing/limits.');
+});
+window.api.onQuotaCooldownTick((p) => {
+  if (!p) return;
+  const s = Number(p.remainingSec || 0);
+  const mm = Math.floor(s / 60).toString().padStart(2,'0');
+  const ss = (s % 60).toString().padStart(2,'0');
+  cooldownLabel.textContent = s > 0 ? `Cooldown: ${mm}:${ss}` : '';
+});
+window.api.onQuotaCooldownEnd(() => {
+  cooldownLabel.textContent = '';
+  // Optionally notify user
+  alert('Cooldown selesai. Queue akan melanjutkan otomatis.');
+});

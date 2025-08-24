@@ -25,5 +25,29 @@ contextBridge.exposeInMainWorld('api', {
   onPausedByCap: (cb) => ipcRenderer.on('queue:pausedByCap', (_e, payload) => cb(payload))
 });
 
+  onQuotaCooldownTick: (cb) => ipcRenderer.on('quota:cooldownTick', (_e, payload) => cb(payload)),
+  onQuotaCooldownEnd: (cb) => ipcRenderer.on('quota:cooldownEnd', (_e, payload) => cb(payload))
+});
+
+  onCooldown: (cb) => ipcRenderer.on('queue:cooldown', (_e,payload)=>cb(payload)),
+  onCooldownEnd: (cb) => ipcRenderer.on('queue:cooldownEnd', (_e,payload)=>cb(payload))
+});
+
+  onQuotaCooldownTick: (cb) => ipcRenderer.on('quota:cooldownTick', (_e, payload) => cb(payload)),
+  onQuotaCooldownEnd: (cb) => ipcRenderer.on('quota:cooldownEnd', (_e, payload) => cb(payload))
+});
+
   onPausedByQuota: (cb) => ipcRenderer.on('queue:pausedByQuota', (_e, payload) => cb(payload))
+});
+
+  onQuotaCooldownTick: (cb) => ipcRenderer.on('quota:cooldownTick', (_e, payload) => cb(payload)),
+  onQuotaCooldownEnd: (cb) => ipcRenderer.on('quota:cooldownEnd', (_e, payload) => cb(payload))
+});
+
+  onCooldown: (cb) => ipcRenderer.on('queue:cooldown', (_e,payload)=>cb(payload)),
+  onCooldownEnd: (cb) => ipcRenderer.on('queue:cooldownEnd', (_e,payload)=>cb(payload))
+});
+
+  onQuotaCooldownTick: (cb) => ipcRenderer.on('quota:cooldownTick', (_e, payload) => cb(payload)),
+  onQuotaCooldownEnd: (cb) => ipcRenderer.on('quota:cooldownEnd', (_e, payload) => cb(payload))
 });
