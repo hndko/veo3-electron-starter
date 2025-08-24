@@ -201,3 +201,9 @@ btnCancel.onclick = () => closeSettingsModal();
 modal.addEventListener('click', (e) => {
   if (e.target === modal) closeSettingsModal();
 });
+
+
+// Quota pause notification
+window.api.onPausedByQuota((p) => {
+  alert((p && p.reason) ? p.reason : 'Quota exceeded (429). Check billing/limits.');
+});

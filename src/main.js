@@ -135,7 +135,7 @@ async function runJob(job) {
       config
     });
   } catch (e) {
-    throw new Error('Start generation failed: ' + (e.message || String(e)));
+    if (e && e.message && e.message.includes('429')) { pauseOnQuotaExceeded(); throw new Error('Quota exceeded (429).'); } else { throw new Error('Start generation failed: ' + (e.message || String(e))); }
   }
 
   try {
@@ -146,7 +146,7 @@ async function runJob(job) {
       operation = await ai.operations.getVideosOperation({ operation });
     }
   } catch (e) {
-    throw new Error('Polling failed: ' + (e.message || String(e)));
+    if (e && e.message && e.message.includes('429')) { pauseOnQuotaExceeded(); throw new Error('Quota exceeded (429).'); } else { throw new Error('Polling failed: ' + (e.message || String(e))); }
   }
 
   try {
@@ -162,8 +162,14 @@ async function runJob(job) {
     job.eta = 0;
     notify('Veo 3: Selesai', `Video disimpan: ${fname}`);
   } catch (e) {
-    throw new Error('Download failed: ' + (e.message || String(e)));
+    if (e && e.message && e.message.includes('429')) { pauseOnQuotaExceeded(); throw new Error('Quota exceeded (429).'); } else { throw new Error('Download failed: ' + (e.message || String(e))); }
   }
+}
+
+
+function isQuotaError(err) {
+  const s = String(err || '');
+  return s.includes('"code":429') || s.includes('RESOURCE_EXHAUSTED') || s.includes('rate limit') || s.includes('429');
 }
 
 // -------- Queue pump --------
@@ -187,6 +193,18 @@ async function pumpQueue() {
         pumpQueue();
       }).catch(err => {
         next.status = 'error';
+        if (isQuotaError(err)) {
+          next.error = 'Quota exceeded (429). Processing paused.';
+          state.running--;
+          // Pause new jobs
+          state.settings.concurrency = 0;
+          saveJSON(SETTINGS_FILE, state.settings);
+          send('queue:update', state.queue);
+          send('queue:pausedByQuota', { reason: 'Quota exceeded (429). Check billing/limits.' });
+          try { new Notification({ title: 'Veo 3', body: 'Quota exceeded, cek billing/limit' }).show(); } catch {}
+          return;
+        }
+
         next.error = String(err);
         next.progress = 0;
         state.running--;
@@ -243,6 +261,13 @@ async function importTXTPath(filePath) {
   send('queue:update', state.queue);
   pumpQueue();
   return lines.length;
+}
+
+
+function pauseOnQuotaExceeded() {
+  state.settings.concurrency = 0;
+  send('queue:update', state.queue);
+  notify('Veo 3: Quota Exceeded', 'Quota exceeded, cek billing/limit di Google AI Studio.');
 }
 
 // -------- IPC --------

@@ -24,3 +24,6 @@ contextBridge.exposeInMainWorld('api', {
   onQueueUpdate: (cb) => ipcRenderer.on('queue:update', (_e, payload) => cb(payload)),
   onPausedByCap: (cb) => ipcRenderer.on('queue:pausedByCap', (_e, payload) => cb(payload))
 });
+
+  onPausedByQuota: (cb) => ipcRenderer.on('queue:pausedByQuota', (_e, payload) => cb(payload))
+});
